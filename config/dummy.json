@@ -1,0 +1,9 @@
+{
+  "accounts": "john@doe.com",
+  "emailSettings": {
+    "host": "",
+    "port": 587,
+    "user": "",
+    "password": ""
+  }
+}
