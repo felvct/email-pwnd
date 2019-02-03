@@ -87,6 +87,8 @@ If you setup your e-mail information, a tidy JSON will also be delivered per mai
 ```
 
 ## Getting Started
+
+### Manually
 ```bash
 $ git clone https://github.com/felvct/email-pwnd.git
 $ cd email-pwnd
@@ -94,6 +96,40 @@ $ npm install
 # launch the script with the provided config/dummy.json
 $ npm run start
 ``` 
+
+### Automation
+```bash
+$ git clone https://github.com/felvct/email-pwnd.git
+$ cd email-pwnd
+$ ./email-pwnd-runner.sh
+```
+### Cron Job
+If you want to monitor your accounts, you could let the script regularly through a cron job.
+
+List your existing cron jobs: `crontab -l`
+
+Adding a new cron job to your list: `crontab -e`
+
+```markdown
+* * * * *     path/to/email-pwnd/email-pwnd-runner.sh
+┬ ┬ ┬ ┬ ┬
+│ │ │ │ │
+│ │ │ │ └──── Day of week (0-7) (Note: sunday could be 0 or 7)
+│ │ │ └────── Month (1-12)
+│ │ └──────── Day of month (1-31)
+│ └────────── Hour (0-23)
+└──────────── Minute (0-59)
+```
+
+Useful times:
+
+| Desription        | Cron command |
+| ----------------- | ------------ |
+| Every full hour   | 0 * * * *    |
+| Daily (@midnight) | 0 0 * * *    |
+| Weekly            | 0 0 * * 0    |
+| Monthly           | 0 0 1 * *    |
+| Yearly            | 0 0 1 1 *    |
 
 ## Configuration
 
