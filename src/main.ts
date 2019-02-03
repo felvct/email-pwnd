@@ -98,14 +98,18 @@ function generateId(breachedAccount: IBreachInformation): string {
 }
 
 async function updateJsonFile(newBreachedAccounts: IBreachInformation[]): Promise<boolean> {
-  breachedAccounts.version += 1;
-  breachedAccounts.created = Date.now();
-  (breachedAccounts.breaches as IBreachInformation[]) = [...breachedAccounts.breaches, ...newBreachedAccounts];
-  breachedAccounts.totalBreaches = breachedAccounts.breaches.length;
+  try {
+    breachedAccounts.version += 1;
+    breachedAccounts.created = Date.now();
+    (breachedAccounts.breaches as IBreachInformation[]) = [...breachedAccounts.breaches, ...newBreachedAccounts];
+    breachedAccounts.totalBreaches = breachedAccounts.breaches.length;
 
-  const updatedJson: string = JSON.stringify(breachedAccounts, null, 2);
-  await writeFile('breached-accounts.json', updatedJson);
-  return true;
+    const updatedJson: string = JSON.stringify(breachedAccounts, null, 2);
+    await writeFile('breached-accounts.json', updatedJson);
+    return true;
+  } catch (error) {
+    throw error;
+  }
 }
 
 if (!Array.isArray(accounts)) {
