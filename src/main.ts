@@ -65,14 +65,16 @@ async function getAccountBreaches(account: string): Promise<any> {
       console.log(`That sucks! ${account} has been breached ${breachInfo.length} time(s):`);
 
       (breachInfo as IBreachInformation[]).forEach((breach: IBreachInformation) => {
-        console.log(`- from: ${breach.Name}`);
-        console.log(`- domain: ${breach.Domain}`);
-        console.log(`- at: ${breach.AddedDate}`);
-        console.log(`- compromised data: ${breach.DataClasses}`);
-        console.log(`- ${breach.Description}`);
-        console.log('------');
-        breach.Account = account;
-        breach.Id = generateId(breach);
+        if (breach && Object.keys(breach).length) {
+          console.log(`- from: ${breach.Name}`);
+          console.log(`- domain: ${breach.Domain}`);
+          console.log(`- at: ${breach.AddedDate}`);
+          console.log(`- compromised data: ${breach.DataClasses}`);
+          console.log(`- ${breach.Description}`);
+          console.log('------');
+          breach.Account = account;
+          breach.Id = generateId(breach);
+        }
       });
 
       return breachInfo;
