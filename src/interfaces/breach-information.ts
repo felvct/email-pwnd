@@ -1,4 +1,4 @@
-export interface IBreachInformation {
+export interface BreachInformation {
   Name: string;
   Title: string;
   Domain: string;

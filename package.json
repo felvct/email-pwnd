@@ -1,12 +1,12 @@
 {
   "name": "email-pwnd",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A script which will check your email(s) against the haveibeenpwned API",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
     "start": "npm run lint && tsc && node dist/src/main.js",
-    "lint": "tslint --project tslint.json || true"
+    "lint": "tslint -p tsconfig.json"
   },
   "keywords": [
     "haveibeenpwned",
@@ -17,13 +17,16 @@
   "author": "Felix Vaucourt",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.21",
-    "@types/nodemailer": "^4.6.5",
-    "tslint": "^5.12.1",
-    "typescript": "^3.3.1"
+    "@types/node": "13.11.1",
+    "@types/nodemailer": "6.4.0",
+    "tslint": "6.1.1",
+    "tslint-config-felvct": "github:felvct/tslint-config-felvct#master",
+    "typescript": "3.8.3"
   },
   "dependencies": {
-    "axios": "^0.18.0",
-    "nodemailer": "^5.1.1"
+    "axios": "0.19.2",
+    "dotenv": "8.2.0",
+    "nodemailer": "6.4.6",
+    "rxjs": "6.5.5"
   }
 }

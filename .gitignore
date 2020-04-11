@@ -4,4 +4,4 @@ config/private.json
 npm-debug.log
 *.log
 .DS_Store
-package-lock.json
+.env

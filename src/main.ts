@@ -1,18 +1,20 @@
-import axios, { AxiosPromise, AxiosResponse } from 'axios';
+import Axios, { AxiosPromise, AxiosResponse } from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
+import { createTransport, SendMailOptions } from 'nodemailer';
 import { promisify } from 'util';
+
 import breachedAccounts from '../breached-accounts.json';
 import CONFIG from '../config/dummy.json';
-import { IBreachInformation, IEmailSettings } from './interfaces/index';
-import { createTransport, SendMailOptions } from 'nodemailer';
+
+import { BreachInformation, EmailSettings } from './interfaces/index';
 
 const BREACH_URL: string = 'https://haveibeenpwned.com/api/v2/breachedaccount';
-const EMAIL_SETTINGS: IEmailSettings = CONFIG.emailSettings;
+const EMAIL_SETTINGS: EmailSettings = CONFIG.emailSettings;
 const writeFile = promisify(fs.writeFile);
 
 // set default user-agent for each request
-axios.defaults.headers.common['User-Agent'] = 'email-pwnd';
+Axios.defaults.headers.common['User-Agent'] = 'email-pwnd';
 
 let accounts: string[] | string = CONFIG.accounts;
 
@@ -41,6 +43,7 @@ const mailOptions: SendMailOptions = {
 function sendEmail(): void {
   if (!EMAIL_SETTINGS.user || !EMAIL_SETTINGS.password) {
     console.error('Could not send email, please take a look at your email settings.');
+
     return;
   }
 
@@ -50,6 +53,7 @@ function sendEmail(): void {
   transporter.sendMail(mailOptions, (error) => {
     if (error) {
       console.error(`An error occured while sending your email ${error.message}`);
+
       return;
     }
     console.log('Your email was send, please check your inbox.');
@@ -58,13 +62,14 @@ function sendEmail(): void {
 
 async function getAccountBreaches(account: string): Promise<any> {
   try {
-    const response: AxiosResponse = await axios.get(`${BREACH_URL}/${account}`);
+    const response: AxiosResponse = await Axios.get(`${BREACH_URL}/${account}`);
+
     if (response.status === 200 && response.data) {
-      const breachInfo: IBreachInformation[] = response.data;
+      const breachInfo: BreachInformation[] = response.data;
 
       console.log(`That sucks! ${account} has been breached ${breachInfo.length} time(s):`);
 
-      (breachInfo as IBreachInformation[]).forEach((breach: IBreachInformation) => {
+      (breachInfo as BreachInformation[]).forEach((breach: BreachInformation) => {
         if (breach && Object.keys(breach).length) {
           console.log(`- from: ${breach.Name}`);
           console.log(`- domain: ${breach.Domain}`);
@@ -79,6 +84,7 @@ async function getAccountBreaches(account: string): Promise<any> {
 
       return breachInfo;
     }
+
     return [];
   } catch (error) {
     // the API is returning 404 if your account could not be found
@@ -86,6 +92,7 @@ async function getAccountBreaches(account: string): Promise<any> {
     if (error.response.status === 404) {
       console.log(`Congrats! ${account} was not (yet) breached`);
       console.log('------');
+
       return;
     }
     console.error(`Error while checking if ${account} has been pwned:`, error);
@@ -93,21 +100,25 @@ async function getAccountBreaches(account: string): Promise<any> {
   }
 }
 
-function generateId(breachedAccount: IBreachInformation): string {
+function generateId(breachedAccount: BreachInformation): string {
   let id: string = `${breachedAccount.Account}.${breachedAccount.Domain}.${breachedAccount.AddedDate}`;
+
   id = crypto.createHash('md5').update(id).digest('hex');
+
   return id;
 }
 
-async function updateJsonFile(newBreachedAccounts: IBreachInformation[]): Promise<boolean> {
+async function updateJsonFile(newBreachedAccounts: BreachInformation[]): Promise<boolean> {
   try {
     breachedAccounts.version += 1;
     breachedAccounts.created = Date.now();
-    (breachedAccounts.breaches as IBreachInformation[]) = [...breachedAccounts.breaches, ...newBreachedAccounts];
+    (breachedAccounts.breaches as BreachInformation[]) = [...breachedAccounts.breaches, ...newBreachedAccounts];
     breachedAccounts.totalBreaches = breachedAccounts.breaches.length;
 
     const updatedJson: string = JSON.stringify(breachedAccounts, null, 2);
+
     await writeFile('breached-accounts.json', updatedJson);
+
     return true;
   } catch (error) {
     throw error;
@@ -119,26 +130,30 @@ if (!Array.isArray(accounts)) {
 }
 
 const checkedAccounts: AxiosPromise[] = [];
+
 accounts.forEach((account) => checkedAccounts.push(getAccountBreaches(account)));
 
 // resolve all promises even if we ran into a catch block during our requests
 // we are using this since non breached accounts are referred as 404 from the API
 Promise.all(checkedAccounts.map((promise) => Promise.resolve(promise).catch((_) => _)))
-.then((pwnedAccounts: IBreachInformation[]) => {
-  let newBreachedAccounts: IBreachInformation[] = [];
+.then((pwnedAccounts: BreachInformation[]) => {
+  let newBreachedAccounts: BreachInformation[] = [];
 
   pwnedAccounts = pwnedAccounts.filter((account) => account);
   // Flatten two-dimensional array
   pwnedAccounts = [].concat(...pwnedAccounts);
 
   if (pwnedAccounts && pwnedAccounts.length && breachedAccounts.breaches && breachedAccounts.breaches.length) {
-    newBreachedAccounts = pwnedAccounts.filter((pwned) => !breachedAccounts.breaches.find((breach) => pwned.Id === breach.Id));
+    newBreachedAccounts = pwnedAccounts.filter(
+      (pwned) => !breachedAccounts.breaches.find((breach) => pwned.Id === breach.Id),
+    );
   } else {
     newBreachedAccounts = pwnedAccounts;
   }
 
   if (!newBreachedAccounts.length) {
     console.log('No new breached accounts');
+
     return false;
   }
 
