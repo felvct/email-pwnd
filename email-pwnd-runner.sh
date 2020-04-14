@@ -1,5 +1,5 @@
 #!/bin/bash
-# if node_modules does not exist then run an npm install
+# if node_modules does not exist then install the dependencies
 if [ ! -d "./node_modules" ]; then
   npm install
 fi

@@ -1,37 +1,41 @@
-import Axios, { AxiosPromise, AxiosResponse } from 'axios';
+import Axios, { AxiosError, AxiosResponse } from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
-import { createTransport, SendMailOptions } from 'nodemailer';
+import { createTransport, SendMailOptions, SentMessageInfo } from 'nodemailer';
+import { EMPTY, forkJoin, from, Observable, of, Subscription, throwError } from 'rxjs';
+import { catchError, concatMap, delay, finalize, map, mergeMap } from 'rxjs/operators';
 import { promisify } from 'util';
 
-import breachedAccounts from '../breached-accounts.json';
-import CONFIG from '../config/dummy.json';
+import knownBreaches from '../breached-accounts.json';
 
-import { BreachInformation, EmailSettings } from './interfaces/index';
+import defaultConfig from './config/config.json';
+import { Breach, Config } from './interfaces';
 
-const BREACH_URL: string = 'https://haveibeenpwned.com/api/v2/breachedaccount';
-const EMAIL_SETTINGS: EmailSettings = CONFIG.emailSettings;
+const { ENDPOINT, API_KEY, APP_NAME , EMAIL }: Config = require('./config/config');
+const RATE_LIMIT_DELAY: number = 1750;
+const ACCOUNTS: string[] = defaultConfig.accounts;
+
 const writeFile = promisify(fs.writeFile);
+const subscriptions: Subscription = new Subscription();
 
-// set default user-agent for each request
-Axios.defaults.headers.common['User-Agent'] = 'email-pwnd';
+// set needed headers for each request
+Axios.defaults.headers.common['User-Agent'] = APP_NAME;
+Axios.defaults.headers.common['hibp-api-key'] = API_KEY;
 
-let accounts: string[] | string = CONFIG.accounts;
-
+const breachedAccounts: Breach[][] = [];
 const transporter = createTransport({
-  host: EMAIL_SETTINGS.host,
-  port: EMAIL_SETTINGS.port,
+  host: EMAIL.host,
+  port: EMAIL.port,
   secure: false,
   requireTLS: true,
   auth: {
-    user: EMAIL_SETTINGS.user,
-    pass: EMAIL_SETTINGS.password,
+    user: EMAIL.user,
+    pass: EMAIL.password,
   },
 });
-
 const mailOptions: SendMailOptions = {
-  from: `"email-pwnd" <${EMAIL_SETTINGS.address || EMAIL_SETTINGS.user}>`,
-  to: EMAIL_SETTINGS.user,
+  from: `"email-pwnd" <${EMAIL.address || EMAIL.user}>`,
+  to: EMAIL.user,
   subject: 'New breached emails',
   text: 'One of your emails was breached. Please see the attachment for more information.',
   attachments: [{
@@ -40,67 +44,86 @@ const mailOptions: SendMailOptions = {
   }],
 };
 
-function sendEmail(): void {
-  if (!EMAIL_SETTINGS.user || !EMAIL_SETTINGS.password) {
-    console.error('Could not send email, please take a look at your email settings.');
+subscriptions.add(
+  forkJoin([
+    from(ACCOUNTS)
+    .pipe(
+      // the API has a rate limit of 1500ms between each request
+      // https://haveibeenpwned.com/API/v3#RateLimiting
+      concatMap((account) => checkForBreaches$(account).pipe(delay(RATE_LIMIT_DELAY))),
+    ),
+  ])
+  .pipe(
+    mergeMap((arrayOfBreachedAccounts: [Breach[]]) => {
+      let [pwnedAccounts] = arrayOfBreachedAccounts;
+      let newBreaches: Breach[] = [];
 
-    return;
-  }
+      pwnedAccounts = pwnedAccounts.filter((account) => !!account);
 
-  // parse latest breached-accounts.json state
-  mailOptions.attachments[0].content = JSON.stringify(breachedAccounts);
+      if (pwnedAccounts?.length && knownBreaches?.totalBreaches) {
+        newBreaches = pwnedAccounts.filter(
+          (pwnedAccount) => !knownBreaches?.breaches.find((breach: Breach) => pwnedAccount.Id === breach.Id),
+        );
+      } else {
+        newBreaches = pwnedAccounts;
+      }
 
-  transporter.sendMail(mailOptions, (error) => {
-    if (error) {
-      console.error(`An error occured while sending your email ${error.message}`);
+      if (!newBreaches.length) {
+        console.log('No new breaches found');
 
-      return;
-    }
-    console.log('Your email was send, please check your inbox.');
-  });
-}
+        return EMPTY;
+      }
 
-async function getAccountBreaches(account: string): Promise<any> {
-  try {
-    const response: AxiosResponse = await Axios.get(`${BREACH_URL}/${account}`);
+      return updateJsonFile$(newBreaches);
+    }),
+    mergeMap(() => sendMail$()),
+    finalize(() => subscriptions.unsubscribe()),
+  )
+  .subscribe({
+    next: () => console.log(`An email containing all the information was sent to ${EMAIL.user}, please check your inbox.`),
+    error: (error: AxiosError) => console.error(error.message || error),
+  }),
+);
 
-    if (response.status === 200 && response.data) {
-      const breachInfo: BreachInformation[] = response.data;
-
-      console.log(`That sucks! ${account} has been breached ${breachInfo.length} time(s):`);
-
-      (breachInfo as BreachInformation[]).forEach((breach: BreachInformation) => {
-        if (breach && Object.keys(breach).length) {
-          console.log(`- from: ${breach.Name}`);
-          console.log(`- domain: ${breach.Domain}`);
-          console.log(`- at: ${breach.AddedDate}`);
-          console.log(`- compromised data: ${breach.DataClasses}`);
-          console.log(`- ${breach.Description}`);
-          console.log('------');
-          breach.Account = account;
-          breach.Id = generateId(breach);
+function checkForBreaches$(account: string): Observable<Breach[]> {
+    return from(Axios.get(`${ENDPOINT}/${account}?truncateResponse=false`))
+    .pipe(
+      catchError((error: AxiosError) => {
+        // the API is returning 404 if your account could not be found
+        // and has therefore not been pwned
+        if (error.response.status === 404) {
+          return of([]);
         }
-      });
 
-      return breachInfo;
-    }
+        return throwError(error);
+      }),
+      map((response: AxiosResponse) => {
+        if (response.status !== 200 && !response.data) {
+          return [];
+        }
 
-    return [];
-  } catch (error) {
-    // the API is returning 404 if your account could not be found
-    // and has therefore not been pwned
-    if (error.response.status === 404) {
-      console.log(`Congrats! ${account} was not (yet) breached`);
-      console.log('------');
+        const breaches: Breach[] = response.data;
 
-      return;
-    }
-    console.error(`Error while checking if ${account} has been pwned:`, error);
-    throw error;
-  }
+        console.log(`That sucks! ${account} has been breached ${breaches.length} time(s)`);
+
+        for (const breach of breaches) {
+          if (breach && Object.keys(breach).length) {
+            breach.Account = account;
+            breach.Id = generateId(breach);
+          }
+        }
+
+        return breaches;
+      }),
+      map((breaches) => {
+        breachedAccounts.push(breaches);
+
+        return [].concat(...breachedAccounts);
+      }),
+    );
 }
 
-function generateId(breachedAccount: BreachInformation): string {
+function generateId(breachedAccount: Breach): string {
   let id: string = `${breachedAccount.Account}.${breachedAccount.Domain}.${breachedAccount.AddedDate}`;
 
   id = crypto.createHash('md5').update(id).digest('hex');
@@ -108,60 +131,24 @@ function generateId(breachedAccount: BreachInformation): string {
   return id;
 }
 
-async function updateJsonFile(newBreachedAccounts: BreachInformation[]): Promise<boolean> {
-  try {
-    breachedAccounts.version += 1;
-    breachedAccounts.created = Date.now();
-    (breachedAccounts.breaches as BreachInformation[]) = [...breachedAccounts.breaches, ...newBreachedAccounts];
-    breachedAccounts.totalBreaches = breachedAccounts.breaches.length;
+function updateJsonFile$(newBreaches: Breach[]): Observable<void> {
+  knownBreaches.version += 1;
+  knownBreaches.created = Date.now();
+  (knownBreaches.breaches as Breach[]) = [...knownBreaches.breaches, ...newBreaches];
 
-    const updatedJson: string = JSON.stringify(breachedAccounts, null, 2);
+  knownBreaches.totalBreaches = knownBreaches.breaches.length;
 
-    await writeFile('breached-accounts.json', updatedJson);
+  const latestJson: string = JSON.stringify(knownBreaches, null, 2);
 
-    return true;
-  } catch (error) {
-    throw error;
-  }
+  return from(writeFile('breached-accounts.json', latestJson));
 }
 
-if (!Array.isArray(accounts)) {
-  accounts = [accounts];
+function sendMail$(): Observable<SentMessageInfo> {
+  if (!EMAIL.user || !EMAIL.password) {
+    return throwError('Could not send email, please take a look at your email settings.');
+  }
+
+  mailOptions.attachments[0].content = JSON.stringify(knownBreaches);
+
+  return from(transporter.sendMail(mailOptions));
 }
-
-const checkedAccounts: AxiosPromise[] = [];
-
-accounts.forEach((account) => checkedAccounts.push(getAccountBreaches(account)));
-
-// resolve all promises even if we ran into a catch block during our requests
-// we are using this since non breached accounts are referred as 404 from the API
-Promise.all(checkedAccounts.map((promise) => Promise.resolve(promise).catch((_) => _)))
-.then((pwnedAccounts: BreachInformation[]) => {
-  let newBreachedAccounts: BreachInformation[] = [];
-
-  pwnedAccounts = pwnedAccounts.filter((account) => account);
-  // Flatten two-dimensional array
-  pwnedAccounts = [].concat(...pwnedAccounts);
-
-  if (pwnedAccounts && pwnedAccounts.length && breachedAccounts.breaches && breachedAccounts.breaches.length) {
-    newBreachedAccounts = pwnedAccounts.filter(
-      (pwned) => !breachedAccounts.breaches.find((breach) => pwned.Id === breach.Id),
-    );
-  } else {
-    newBreachedAccounts = pwnedAccounts;
-  }
-
-  if (!newBreachedAccounts.length) {
-    console.log('No new breached accounts');
-
-    return false;
-  }
-
-  return updateJsonFile(newBreachedAccounts);
-})
-.then((newBreaches: boolean) => {
-  if (newBreaches) {
-    sendEmail();
-  }
-})
-.catch((error) => console.error('Something went wrong while writing the JSON file:', error));

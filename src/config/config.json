@@ -1,5 +1,6 @@
 {
-  "accounts": "john@doe.com",
+  "accounts": ["john@doe.com"],
+  "apiKey": "YOUR_API_KEY",
   "emailSettings": {
     "host": "",
     "port": 587,

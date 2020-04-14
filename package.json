@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "npm run lint && tsc && node dist/src/main.js",
+    "start:dev": "tsc && node dist/src/main.js",
     "lint": "tslint -p tsconfig.json"
   },
   "keywords": [
@@ -17,10 +18,10 @@
   "author": "Felix Vaucourt",
   "license": "MIT",
   "devDependencies": {
+    "@felvct/tslint-config": "1.0.0",
     "@types/node": "13.11.1",
     "@types/nodemailer": "6.4.0",
     "tslint": "6.1.1",
-    "tslint-config-felvct": "github:felvct/tslint-config-felvct#master",
     "typescript": "3.8.3"
   },
   "dependencies": {
