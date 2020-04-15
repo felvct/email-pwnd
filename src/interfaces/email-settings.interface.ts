@@ -1,4 +1,4 @@
-export interface IEmailSettings {
+export interface EmailSettings {
   host: string;
   port: number;
   user: string;
